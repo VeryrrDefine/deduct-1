@@ -24,6 +24,55 @@ const rl = readline.createInterface({
 const ds = new Deserializer();
 const formal = new FormalSystem();
 
+async function deduct(rulename: string) {
+	let rule = formal.rulemanager.normalRules.find((x) => x[0] == rulename);
+	if (!rule) {
+		throw new Error(`Rule doesn't exists.`);
+	}
+	let conditionIdxs: number[] = [];
+	if (rule[1].conditions.length !== 0) {
+		for (let i = 0; i < rule[1].conditions.length; i++) {
+			const theoremID = Number(await ask(`Theorem id for ${i}th condition: `));
+			const prop = formal.workspace.propositions[theoremID];
+			if (!prop) {
+				throw new Error(`Theorem ${theoremID} doesn't exists`);
+			}
+			conditionIdxs.push(theoremID);
+		}
+	}
+
+	const payload = formal.rulemanager.preloads.find((x) => x[0] == rulename);
+
+	let termDifference = payload ? payload[1].variableNames : undefined;
+	let propDifference = payload ? payload[1].propositionNames : undefined;
+
+	if (!termDifference || !propDifference) {
+		const a = formal.rulemanager.generatePayload(rule);
+		termDifference = a.termDifference;
+		propDifference = a.propDifference;
+	}
+
+	let matchmapSet: Record<string, ASTNode> = {};
+	for (const x of termDifference) {
+		const termString = compileProposition(await ask(`${x} is `), 'term');
+		if (!termString.success) {
+			throw new Error(`Term matching failed: ${fancyDisplay(termString.reason)}`);
+		}
+		matchmapSet[x] = termString.data.result;
+	}
+	for (const x of propDifference) {
+		const propString = compileProposition(await ask(`${x} is `), 'proposition');
+		if (!propString.success) {
+			throw new Error(`Proposition matching failed: ${fancyDisplay(propString.reason)}`);
+		}
+		matchmapSet[x] = propString.data.result;
+	}
+
+	const r = formal.deduct(rulename, conditionIdxs, new Map(Object.entries(matchmapSet)));
+	const result = r[1].value;
+	console.log(fancyDisplay(result));
+}
+
 async function replQuestion() {
 	let currentWorkspaceDir = '';
 	let curflag = '';
@@ -79,10 +128,12 @@ async function replQuestion() {
 						formal.workspace.propositions.map((x) => ds.deserializeProposition(x)),
 					),
 				);
+				continue;
 			}
 			if (command === 'deserialize') {
 				const j = await ask('what to deserialize? ==');
 				formal.workspace.propositions = JSON.parse(j).map((x: any) => ds.toProposition(x));
+				continue;
 			}
 			if (command === 'clear') {
 				formal.workspace.propositions = [];
@@ -90,6 +141,7 @@ async function replQuestion() {
 					`Your proposition has been cleared (unsaved changes), if you did this accidentaly, please exit immediately and restart this program.`,
 				);
 				console.log(`Your saves will not be saved until next deduct/hyp.`);
+				continue;
 			}
 
 			if (command === 'parse') {
@@ -132,6 +184,7 @@ async function replQuestion() {
 				if (currentWorkspaceDir) {
 					await savePropositions(currentWorkspaceDir, formal, ds);
 				}
+				continue;
 			}
 
 			if (command === 'list rules') {
@@ -271,65 +324,15 @@ async function replQuestion() {
 				console.log(`Detail information: ${failedMacros.join(', ')}`);
 				formal.workspace = oldworkspace;
 				console.log(`Check circular reference... [WIP]`);
+				continue;
 			}
 			if (command === 'deduct') {
 				const rulename = await ask('For ');
-				let rule = formal.rulemanager.normalRules.find((x) => x[0] == rulename);
-				if (!rule) {
-					console.error(`Rule doesn't exists.`);
-					continue;
-				}
-				let conditionIdxs: number[] = [];
-				if (rule[1].conditions.length !== 0) {
-					for (let i = 0; i < rule[1].conditions.length; i++) {
-						const theoremID = Number(await ask(`Theorem id for ${i}th condition: `));
-						const prop = formal.workspace.propositions[theoremID];
-						if (!prop) {
-							throw new Error(`Theorem ${theoremID} doesn't exists`);
-						}
-						conditionIdxs.push(theoremID);
-					}
-				}
-
-				const payload = formal.rulemanager.preloads.find((x) => x[0] == rulename);
-
-				let termDifference = payload ? payload[1].variableNames : undefined;
-				let propDifference = payload ? payload[1].propositionNames : undefined;
-
-				if (!termDifference || !propDifference) {
-					const a = formal.rulemanager.generatePayload(rule);
-					termDifference = a.termDifference;
-					propDifference = a.propDifference;
-				}
-
-				let matchmapSet: Record<string, ASTNode> = {};
-				for (const x of termDifference) {
-					const termString = compileProposition(await ask(`${x} is `), 'term');
-					if (!termString.success) {
-						throw new Error(`Term matching failed: ${fancyDisplay(termString.reason)}`);
-					}
-					matchmapSet[x] = termString.data.result;
-				}
-				for (const x of propDifference) {
-					const propString = compileProposition(await ask(`${x} is `), 'proposition');
-					if (!propString.success) {
-						throw new Error(
-							`Proposition matching failed: ${fancyDisplay(propString.reason)}`,
-						);
-					}
-					matchmapSet[x] = propString.data.result;
-				}
-
-				const r = formal.deduct(
-					rulename,
-					conditionIdxs,
-					new Map(Object.entries(matchmapSet)),
-				);
-				const result = r[1].value;
-				console.log(fancyDisplay(result));
+				await deduct(rulename);
 				if (currentWorkspaceDir) {
 					await savePropositions(currentWorkspaceDir, formal, ds);
 				}
+				continue;
 			}
 			if (command === 'match') {
 				// 测试功能的指令
@@ -373,6 +376,7 @@ async function replQuestion() {
 				}
 				continue;
 			}
+			await deduct(command);
 		} catch (e) {
 			console.error(e);
 		}
