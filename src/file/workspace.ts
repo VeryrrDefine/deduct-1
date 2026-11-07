@@ -1,5 +1,5 @@
 import { mkdir, readFile } from 'fs/promises';
-import { checkDirectory, saveFile } from './file';
+import { checkDirectory, saveFile } from './file.ts';
 import path from 'path';
 import type { FormalSystem } from '../formal/system/formalsystem';
 import type { Deserializer } from '../formal/exporter';
