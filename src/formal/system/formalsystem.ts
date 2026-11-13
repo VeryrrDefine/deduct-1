@@ -3,6 +3,7 @@ import { fancyDisplay } from '../fancy.ts';
 import { ASTNode } from '../parser/compiler.ts';
 import { compileRules } from '../parser/index.ts';
 import type { AssertionData, Deduction, DeductionStep, Proposition } from '../types/types.ts';
+import { MetaruleGenerator } from './metarule.ts';
 
 export class Workspace {
 	propositions: Proposition[] = [];
@@ -27,6 +28,12 @@ export class Workspace {
 			);
 		}
 		this.propositions.splice(index, 0, ...props);
+	}
+	printWorkspace() {
+		for (let i = 0; i < this.propositions.length; i++) {
+			const prop = this.propositions[i];
+			console.log(fancyDisplay(prop.value));
+		}
 	}
 }
 const RESERVED = new Set([
@@ -67,6 +74,7 @@ export class RuleManager {
 	constructor() {
 		this.preloads = [];
 	}
+	metaruleSet: Set<string> = new Set();
 	macros: string[] = [];
 	preload() {
 		const asserter = new ASTManager();
@@ -99,6 +107,16 @@ export class RuleManager {
 			conditionData.propositionNames,
 		);
 		return { termDifference, propDifference };
+	}
+	find(rulename: string, formal: FormalSystem) {
+		let firstfind = this.normalRules.find((x) => x[0] == rulename);
+		if (!firstfind && rulename.startsWith('<')) {
+			return [
+				rulename,
+				new MetaruleGenerator().generateInvDeduct(rulename.slice(1), formal),
+			] as [string, Deduction];
+		}
+		return firstfind;
 	}
 }
 
@@ -168,19 +186,20 @@ export class FormalSystem {
 		const ws = { from, value: result } as Proposition;
 		return [this.workspace.propositions.push(ws) - 1, ws] as [number, Proposition];
 	}
-	record(newrulename: string) {
-		if (/^[0-9<>acdempuv#\.]/g.test(newrulename)) {
-			throw new Error(`Recorded failed: reversed name.`);
+	record(newrulename: string, skip = false, from = 'Recorded Macro') {
+		if (!skip) {
+			if (/^[0-9<>acdempuv#\.]/g.test(newrulename)) {
+				throw new Error(`Recorded failed: reversed name.`);
+			}
+			if (/[\\\/:\*\?\:<>|]/g.test(newrulename)) {
+				throw new Error(`Recorded failed: windows reversed characters.`);
+			}
+			if (this.rulemanager.normalRules.map((x) => x[0]).includes(newrulename)) {
+				throw new Error(`Recorded failed: duplicate name.`);
+			}
+			if (RESERVED.has(newrulename))
+				throw new Error(`Recorded failed: name collides with a command.`);
 		}
-		if (/[\\\/:\*\?\:<>|]/g.test(newrulename)) {
-			throw new Error(`Recorded failed: windows reversed characters.`);
-		}
-		if (this.rulemanager.normalRules.map((x) => x[0]).includes(newrulename)) {
-			throw new Error(`Recorded failed: duplicate name.`);
-		}
-		if (RESERVED.has(newrulename))
-			throw new Error(`Recorded failed: name collides with a command.`);
-
 		let sliceUntil = 0;
 		while (
 			sliceUntil < this.workspace.propositions.length &&
@@ -200,11 +219,13 @@ export class FormalSystem {
 		const res: Deduction = {
 			conditions,
 			conclusion: conclusion.value,
-			from: 'Recorded Macro',
+			from: from,
 			steps: this.workspace.propositions.slice(sliceUntil).map((x) => x.from),
 		};
 
 		this.rulemanager.normalRules.push([newrulename, res]);
 		this.rulemanager.macros.push(newrulename);
+
+		return res;
 	}
 }

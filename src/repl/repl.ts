@@ -6,17 +6,9 @@ import { ASTNode } from '../formal/parser/compiler.ts';
 import { HELP } from '../utils/constants.ts';
 import { FormalSystem, Workspace } from '../formal/system/formalsystem.ts';
 import { Deserializer } from '../formal/exporter/index.ts';
-import path from 'node:path';
-import { readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import { checkDirectory, saveFile } from '../file/file.ts';
-import { homedir } from 'node:os';
-import {
-	initWorkspace,
-	loadWorkspace,
-	saveDeduction,
-	savePropositions,
-} from '../file/workspace.ts';
+import { loadWorkspace, saveDeduction, savePropositions } from '../file/workspace.ts';
+import { cmdparser } from '../command/commandparser.ts';
+import { getInitialWorkspaceDir } from '../command/t.ts';
 const rl = readline.createInterface({
 	input: process.stdin,
 	output: process.stdout,
@@ -25,7 +17,7 @@ const ds = new Deserializer();
 const formal = new FormalSystem();
 
 async function deduct(rulename: string) {
-	let rule = formal.rulemanager.normalRules.find((x) => x[0] == rulename);
+	let rule = formal.rulemanager.find(rulename, formal);
 	if (!rule) {
 		throw new Error(`Rule doesn't exists.`);
 	}
@@ -74,45 +66,11 @@ async function deduct(rulename: string) {
 }
 
 async function replQuestion() {
-	let currentWorkspaceDir = '';
-	let curflag = '';
-	const usedflag: string[] = [];
-	for (let i = 0; i < process.argv.length; i++) {
-		if (curflag == 'workspace') {
-			currentWorkspaceDir = process.argv[i];
-			curflag = '';
-			console.log(`Set workspace dir = ${currentWorkspaceDir}.`);
-			try {
-				await loadWorkspace(currentWorkspaceDir, formal, ds);
-			} catch (e) {
-				console.log(e);
-				process.exit(1);
-			}
-		}
-		if (curflag == 'project') {
-			currentWorkspaceDir = path.join(homedir(), '.deduct', 'projects', process.argv[i]);
-			curflag = '';
-			console.log(`Set workspace dir = ${currentWorkspaceDir}.`);
-			try {
-				await loadWorkspace(currentWorkspaceDir, formal, ds);
-			} catch (e) {
-				console.log(e);
-				process.exit(1);
-			}
-		}
-		if (process.argv[i] == '--workspace' || process.argv[i] == '-w') {
-			curflag = 'workspace';
-		}
-		if (process.argv[i] == '--project' || process.argv[i] == '-p') {
-			curflag = 'project';
-		}
-		if (usedflag.includes(curflag)) {
-			console.log(`Duplicated flag(${curflag}).`);
-			process.exit(1);
-		}
-		if (curflag) usedflag.push(curflag);
-	}
+	const currentWorkspaceDir = getInitialWorkspaceDir();
 	if (!currentWorkspaceDir) console.log(`Memory-only mode (changes will not be saved).`);
+	else {
+		await loadWorkspace(currentWorkspaceDir, formal, ds);
+	}
 	while (true) {
 		try {
 			const answer = await ask(`${formal.workspace.propositions.length}|`);
@@ -141,6 +99,14 @@ async function replQuestion() {
 					`Your proposition has been cleared (unsaved changes), if you did this accidentaly, please exit immediately and restart this program.`,
 				);
 				console.log(`Your saves will not be saved until next deduct/hyp.`);
+				continue;
+			}
+			if (command === 'pop') {
+				formal.workspace.propositions.pop();
+				if (currentWorkspaceDir) {
+					await savePropositions(currentWorkspaceDir, formal, ds);
+				}
+				console.log(`Action done.`);
 				continue;
 			}
 
