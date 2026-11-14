@@ -1,6 +1,11 @@
 import readline from 'node:readline';
 import { compileProposition } from '../formal/parser/index.ts';
-import { displayProposition, fancyDisplay, renderAST } from '../formal/fancy.ts';
+import {
+	displayDeductionStep,
+	displayProposition,
+	fancyDisplay,
+	renderAST,
+} from '../formal/fancy.ts';
 import { asserter, ASTManager } from '../formal/astmgr.ts';
 import { ASTNode } from '../formal/parser/compiler.ts';
 import { HELP } from '../utils/constants.ts';
@@ -13,31 +18,17 @@ import { MetaruleGenerator } from '../formal/system/metarule.ts';
 import path from 'node:path';
 import { checkDirectory, saveFile } from '../file/file.ts';
 import { readFile } from 'node:fs/promises';
+import type { Deduction } from '../formal/types/types.ts';
 const rl = readline.createInterface({
 	input: process.stdin,
 	output: process.stdout,
 });
 const ds = new Deserializer();
 const formal = new FormalSystem();
+formal.currentWorkspaceDir = getInitialWorkspaceDir();
 
 async function deduct(rulename: string, currentWorkspaceDir: string) {
-	if (
-		formal.cacheList.includes(`${rulename}.json`) &&
-		!formal.rulemanager.normalRules.find((x) => x[0] == rulename)
-	) {
-		const loads = (
-			await readFile(
-				path.join(
-					currentWorkspaceDir,
-					'cache',
-					`${MetaruleGenerator.serializeName(rulename)}.json`,
-				),
-			)
-		).toString('utf-8');
-		formal.rulemanager.normalRules.push([rulename, ds.toDeduction(JSON.parse(loads))]);
-	}
-
-	let rule = await formal.rulemanager.find(rulename, formal);
+	let rule = await formal.find(rulename);
 	if (!rule) {
 		throw new Error(`Rule doesn't exists.`);
 	}
@@ -84,9 +75,34 @@ async function deduct(rulename: string, currentWorkspaceDir: string) {
 	const result = r[1].value;
 	console.log(fancyDisplay(result));
 }
+async function inlnDeduction(deduction: Deduction, formal: FormalSystem) {
+	formal.workspace.insertPropositionsBefore(
+		deduction.conditions.map((x) => {
+			return {
+				value: x,
+				from: {
+					conditionIdxs: [],
+					deductionIdx: 'hyp',
+					replaceValues: {},
+				},
+			};
+		}),
+		0,
+	);
+	for (const deductstep of deduction.steps!) {
+		if (deductstep.deductionIdx === 'hyp') {
+			continue;
+		}
+		await formal.deduct(
+			deductstep.deductionIdx,
+			deductstep.conditionIdxs,
+			new Map(Object.entries(deductstep.replaceValues)),
+		);
+	}
+}
 
 async function replQuestion() {
-	const currentWorkspaceDir = getInitialWorkspaceDir();
+	const currentWorkspaceDir = formal.currentWorkspaceDir;
 	if (!currentWorkspaceDir) console.log(`Memory-only mode (changes will not be saved).`);
 	else {
 		await loadWorkspace(currentWorkspaceDir, formal, ds);
@@ -179,6 +195,59 @@ async function replQuestion() {
 				continue;
 			}
 
+			if (command === 'entr rules') {
+				const rulename = await ask('Rule name === ');
+
+				const tryRule = await formal.find(rulename);
+				if (!tryRule) {
+					console.error(`Rule doesn't exists`);
+					continue;
+				}
+				if (!tryRule[1].steps || tryRule[1].steps.length == 0) {
+					console.log(`This rules is declared as an axiom.`);
+					continue;
+				}
+				console.log(
+					tryRule[1].steps
+						.map((x, i: number) =>
+							displayDeductionStep(x, i + tryRule[1].conditions.length),
+						)
+						.join('\n'),
+				);
+				continue;
+
+				continue;
+			}
+
+			if (command === 'entr rules discovery') {
+				const rulename = await ask('Rule name === ');
+
+				const tryRule = await formal.find(rulename);
+				if (!tryRule) {
+					console.error(`Rule doesn't exists`);
+					continue;
+				}
+				if (!tryRule[1].steps || tryRule[1].steps.length == 0) {
+					console.log(`This rules is declared as an axiom.`);
+					continue;
+				}
+
+				const workspace = formal.workspace;
+
+				formal.workspace = new Workspace();
+
+				await inlnDeduction(tryRule[1], formal);
+
+				console.log(
+					formal.workspace.propositions
+						.map((x, i: number) => displayProposition(x, i))
+						.join('\n'),
+				);
+
+				formal.workspace = workspace;
+				continue;
+			}
+
 			if (command === 'list rules all') {
 				console.log(
 					formal.rulemanager.normalRules
@@ -229,7 +298,7 @@ async function replQuestion() {
 					continue;
 				}
 				for (const s of formal.rulemanager.metaruleSet) {
-					const ded = await formal.rulemanager.find(s, formal);
+					const ded = await formal.find(s);
 					if (!ded) continue;
 					const normalizedname = MetaruleGenerator.serializeName(ded[0]);
 
@@ -286,7 +355,7 @@ async function replQuestion() {
 				const asserter = new ASTManager();
 				try {
 					for (const macro of rulenames) {
-						const rule = await formal.rulemanager.find(macro, formal);
+						const rule = await formal.find(macro);
 						if (!rule) {
 							throw new Error(`Macro ${macro} is lost.`);
 						}
@@ -325,29 +394,7 @@ async function replQuestion() {
 							console.error(`It may be a axiom, skipped.`);
 							continue;
 						}
-						formal.workspace.insertPropositionsBefore(
-							deduction.conditions.map((x) => {
-								return {
-									value: x,
-									from: {
-										conditionIdxs: [],
-										deductionIdx: 'hyp',
-										replaceValues: {},
-									},
-								};
-							}),
-							0,
-						);
-						for (const deductstep of deduction.steps) {
-							if (deductstep.deductionIdx === 'hyp') {
-								continue;
-							}
-							await formal.deduct(
-								deductstep.deductionIdx,
-								deductstep.conditionIdxs,
-								new Map(Object.entries(deductstep.replaceValues)),
-							);
-						}
+						await inlnDeduction(deduction, formal);
 						const prop = formal.workspace.propositions.at(-1);
 						if (!prop) {
 							throw new Error(`Final result of ${macro} is invalid: undefined. `);

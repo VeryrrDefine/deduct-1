@@ -1,12 +1,13 @@
 import { range } from '../../utils/range.ts';
 import { ASTManager } from '../astmgr.ts';
 import { ASTNode } from '../parser/compiler.ts';
+import type { Proposition } from '../types/types.ts';
 import { Workspace, type FormalSystem } from './formalsystem.ts';
 
 export class MetaruleGenerator {
 	async generateInvDeduct(baserulename: string, formal: FormalSystem) {
 		const asserter = new ASTManager();
-		const baseRule = await formal.rulemanager.find(baserulename, formal);
+		const baseRule = await formal.find(baserulename);
 		if (!baseRule) throw new Error(`Base rule doesn't exists.`);
 
 		// Only accepts (x0,x1,x2,...|-y0->y1)
@@ -56,7 +57,7 @@ export class MetaruleGenerator {
 	}
 	async generateCondDeduct(baserulename: string, formal: FormalSystem) {
 		const asserter = new ASTManager();
-		const baseRule = await formal.rulemanager.find(baserulename, formal);
+		const baseRule = await formal.find(baserulename);
 		if (!baseRule) throw new Error(`Base rule doesn't exists.`);
 
 		const conclusion = baseRule[1].conclusion;
@@ -115,7 +116,7 @@ export class MetaruleGenerator {
 				}
 				for (const steps of baseRule[1].steps) {
 					const replmap = new Map(Object.entries(steps.replaceValues));
-					const r = await formal.rulemanager.find(`c${steps.deductionIdx}`, formal);
+					const r = await formal.find(`c${steps.deductionIdx}`);
 					if (!r) throw new Error(`Generate c${steps.deductionIdx} failed.`);
 
 					const pyld = formal.rulemanager.generatePayload(r);
@@ -134,7 +135,132 @@ export class MetaruleGenerator {
 
 		return res;
 	}
-	async generateDeduct(baserulename: string, formal: FormalSystem) {}
+	async generateDeduct(baserulename: string, formal: FormalSystem) {
+		const asserter = new ASTManager();
+		const baseRule = await formal.find(baserulename);
+		if (!baseRule) throw new Error(`Base rule doesn't exists.`);
+
+		if (baseRule[1].conditions.length == 0) throw new Error(`No conditions.`);
+
+		const conclusion = baseRule[1].conclusion;
+
+		const orgConditionLength = baseRule[1].conditions.length;
+
+		const newConditions = baseRule[1].conditions.slice(0, baseRule[1].conditions.length - 1);
+
+		let payload = formal.rulemanager.generatePayload(baseRule, asserter);
+		const a = formal.workspace;
+		formal.workspace = new Workspace();
+		formal.workspace.insertPropositionsBefore(
+			newConditions.map((x) => {
+				return {
+					value: x,
+					from: {
+						deductionIdx: 'hyp',
+						conditionIdxs: [],
+						replaceValues: {},
+					},
+				};
+			}),
+			0,
+		);
+
+		const baseRule2 = baseRule;
+		const lastHyp = baseRule[1].conditions.at(-1)!;
+
+		/**
+		 * 每一个证明步骤(包括假设)的到lastHyp->结论的映射
+		 */
+		const stepToCondIdx: Map<number, number> = new Map();
+
+		async function genStep(
+			originIndex: number,
+			formal: FormalSystem,
+		): Promise<[number, Proposition]> {
+			console.log(`genStep(${originIndex})`);
+			const check = stepToCondIdx.get(originIndex);
+			if (check !== undefined) {
+				return [check, formal.workspace.propositions[check]];
+			}
+			/**
+			 * 原规则的一个证明过程
+			 */
+			const originStep = baseRule2[1].steps![originIndex - baseRule2[1].conditions.length];
+
+			// 如果这个证明过程是假设（尝试读取假设越界到负数）
+			if (originIndex - baseRule2[1].conditions.length < 0) {
+				// 如果原证明过程是lastHyp
+				if (originIndex === orgConditionLength - 1) {
+					// 这里应该要用一个宏$0>$0代替
+					const deduction1 = await formal.deduct(
+						'a1',
+						[],
+						new Map([
+							['$0', lastHyp],
+							['$1', lastHyp],
+						]),
+					);
+					const deduction2 = await formal.deduct(
+						'a1',
+						[],
+						new Map([
+							['$0', lastHyp],
+							['$1', new ASTNode('sym', '>', [lastHyp, lastHyp])],
+						]),
+					);
+					const deduction3 = await formal.deduct(
+						'cmp',
+						[deduction2[0], deduction1[0]],
+						new Map(),
+					);
+					stepToCondIdx.set(originIndex, deduction3[0]);
+					return deduction3;
+				} else {
+					const deduction = await formal.deduct(
+						'<a1',
+						[originIndex],
+						new Map([['$1', lastHyp]]),
+					);
+					stepToCondIdx.set(originIndex, deduction[0]);
+					return deduction;
+				}
+			}
+
+			// 使用了规则的定理
+			// 例如 .??? [一个假设,lastHypIdx,证明过程]
+			// 这时候就转换成 c.??? [....].map(genStep...);
+			// c.???会多出来一个占位符，替换成lastHyp
+
+			const conditionRule = await formal.find(`c${originStep.deductionIdx}`);
+
+			if (!conditionRule) throw new Error(`Deduction failed: c${originStep.deductionIdx}`);
+
+			const condRuleWildcard = conditionRule[1].conclusion.nodes[0];
+			const originalMap = Object.entries(originStep.replaceValues);
+			const conditionIdxsnew: number[] = [];
+			for (let i = 0; i < originStep.conditionIdxs.length; i++) {
+				conditionIdxsnew.push((await genStep(originStep.conditionIdxs[i], formal))[0]);
+			}
+			const deduction = await formal.deduct(
+				`c${originStep.deductionIdx}`,
+				conditionIdxsnew,
+				new Map([...originalMap, [condRuleWildcard.name, lastHyp]]),
+			);
+
+			stepToCondIdx.set(originIndex, deduction[0]);
+
+			return deduction;
+		}
+		for (let i = 0; i < baseRule[1].steps!.length; i++) {
+			await genStep(i + baseRule2[1].conditions.length, formal);
+		}
+
+		const res = formal.record(`>${baserulename}`, true, 'Auto Generated Macro', true);
+		formal.rulemanager.metaruleSet.add(`>${baserulename}`);
+		formal.workspace = a;
+
+		return res;
+	}
 	static serializeName(rulename: string) {
 		return encodeURIComponent(rulename).replaceAll('%', '#');
 	}

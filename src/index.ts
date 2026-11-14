@@ -28,7 +28,7 @@ if (cmdparser.getBool('repl')) {
 		const ds = new Deserializer();
 		const dir = getInitialWorkspaceDir(false);
 		await loadWorkspace(dir, formal, ds);
-		const rule = await formal.rulemanager.find(rulename, formal);
+		const rule = await formal.find(rulename);
 		if (!rule) {
 			console.error(`Rule doesn't exists.`);
 			process.exit(2);

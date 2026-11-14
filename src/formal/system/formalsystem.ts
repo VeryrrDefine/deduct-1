@@ -1,9 +1,12 @@
+import { readFile } from 'node:fs/promises';
 import { ASTManager } from '../astmgr.ts';
 import { fancyDisplay } from '../fancy.ts';
 import { ASTNode } from '../parser/compiler.ts';
 import { compileRules } from '../parser/index.ts';
 import type { AssertionData, Deduction, DeductionStep, Proposition } from '../types/types.ts';
 import { MetaruleGenerator } from './metarule.ts';
+import path from 'node:path';
+import { Deserializer } from '../exporter/index.ts';
 
 export class Workspace {
 	propositions: Proposition[] = [];
@@ -108,32 +111,16 @@ export class RuleManager {
 		);
 		return { termDifference, propDifference };
 	}
-	async find(rulename: string, formal: FormalSystem) {
-		let firstfind = this.normalRules.find((x) => x[0] == rulename);
-		if (!firstfind) {
-			console.log(`Try generating ${rulename}`);
-			if (rulename.startsWith('<'))
-				return [
-					rulename,
-					await new MetaruleGenerator().generateInvDeduct(rulename.slice(1), formal),
-				] as [string, Deduction];
-			if (rulename.startsWith('c'))
-				return [
-					rulename,
-					await new MetaruleGenerator().generateCondDeduct(rulename.slice(1), formal),
-				] as [string, Deduction];
-		}
-		return firstfind;
-	}
 }
 
 export class FormalSystem {
 	workspace: Workspace = new Workspace();
 	rulemanager: RuleManager = new RuleManager();
 	cacheList: string[] = [];
+	currentWorkspaceDir: string = '';
 	async deduct(rulename: string, conditionIdxs: number[], playerMatchmap: Map<string, ASTNode>) {
 		const asserter = new ASTManager();
-		let rule = await this.rulemanager.find(rulename, this);
+		let rule = await this.find(rulename);
 		if (!rule) {
 			throw new Error(`Rule doesn't exists.`);
 		}
@@ -235,5 +222,45 @@ export class FormalSystem {
 		if (!notuser) this.rulemanager.macros.push(newrulename);
 
 		return res;
+	}
+	async find(rulename: string) {
+		if (
+			this.cacheList.includes(`${rulename}.json`) &&
+			!this.rulemanager.normalRules.find((x) => x[0] == rulename)
+		) {
+			const loads = (
+				await readFile(
+					path.join(
+						this.currentWorkspaceDir,
+						'cache',
+						`${MetaruleGenerator.serializeName(rulename)}.json`,
+					),
+				)
+			).toString('utf-8');
+			this.rulemanager.normalRules.push([
+				rulename,
+				new Deserializer().toDeduction(JSON.parse(loads)),
+			]);
+		}
+		let firstfind = this.rulemanager.normalRules.find((x) => x[0] == rulename);
+		if (!firstfind) {
+			console.log(`Try generating ${rulename}`);
+			if (rulename.startsWith('<'))
+				return [
+					rulename,
+					await new MetaruleGenerator().generateInvDeduct(rulename.slice(1), this),
+				] as [string, Deduction];
+			if (rulename.startsWith('c'))
+				return [
+					rulename,
+					await new MetaruleGenerator().generateCondDeduct(rulename.slice(1), this),
+				] as [string, Deduction];
+			if (rulename.startsWith('>'))
+				return [
+					rulename,
+					await new MetaruleGenerator().generateDeduct(rulename.slice(1), this),
+				] as [string, Deduction];
+		}
+		return firstfind;
 	}
 }

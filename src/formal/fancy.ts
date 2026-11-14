@@ -1,6 +1,6 @@
 import { asserter } from './astmgr.ts';
 import { ASTNode } from './parser/compiler.ts';
-import type { AssertionData, Proposition } from './types/types.ts';
+import type { AssertionData, DeductionStep, Proposition } from './types/types.ts';
 import { blue, green, italic, red } from './colourize.ts';
 
 function braceadd(x: string, brace = 0) {
@@ -61,6 +61,11 @@ export function displayProposition(x: Proposition, index: number) {
 	const rule = red(x.from.deductionIdx);
 	const conds = x.from.conditionIdxs.length ? ' ' + green(x.from.conditionIdxs.join(',')) : '';
 	return `[${index}] ${renderAST(x.value)}    ${rule}${conds}`;
+}
+export function displayDeductionStep(x: DeductionStep, index: number) {
+	const rule = red(x.deductionIdx);
+	const conds = x.conditionIdxs.length ? ' ' + green(x.conditionIdxs.join(',')) : '';
+	return `[${index}] ?????    ${rule}${conds}`;
 }
 
 export function fancyDisplay(x: unknown, brace = 0, out?: AssertionData): string {
