@@ -194,7 +194,7 @@ export class FormalSystem {
 		const ws = { from, value: result } as Proposition;
 		return [this.workspace.propositions.push(ws) - 1, ws] as [number, Proposition];
 	}
-	record(newrulename: string, skip = false, from = 'Recorded Macro') {
+	record(newrulename: string, skip = false, from = 'Recorded Macro', notuser = false) {
 		if (!skip) {
 			if (/^[0-9<>acdempuv#\.]/g.test(newrulename)) {
 				throw new Error(`Recorded failed: reversed name.`);
@@ -232,7 +232,7 @@ export class FormalSystem {
 		};
 
 		this.rulemanager.normalRules.push([newrulename, res]);
-		this.rulemanager.macros.push(newrulename);
+		if (!notuser) this.rulemanager.macros.push(newrulename);
 
 		return res;
 	}

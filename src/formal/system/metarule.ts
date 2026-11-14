@@ -48,7 +48,7 @@ export class MetaruleGenerator {
 		);
 		await formal.deduct('mp', [b[0], conditionIdx], new Map());
 
-		const res = formal.record(`<${baserulename}`, true, 'Auto Generated Macro');
+		const res = formal.record(`<${baserulename}`, true, 'Auto Generated Macro', true);
 		formal.rulemanager.metaruleSet.add(`<${baserulename}`);
 		formal.workspace = a;
 
@@ -128,7 +128,7 @@ export class MetaruleGenerator {
 			}
 		}
 
-		const res = formal.record(`c${baserulename}`, true, 'Auto Generated Macro');
+		const res = formal.record(`c${baserulename}`, true, 'Auto Generated Macro', true);
 		formal.rulemanager.metaruleSet.add(`c${baserulename}`);
 		formal.workspace = a;
 

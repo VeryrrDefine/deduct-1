@@ -179,9 +179,33 @@ async function replQuestion() {
 				continue;
 			}
 
-			if (command === 'list rules') {
+			if (command === 'list rules all') {
 				console.log(
 					formal.rulemanager.normalRules
+						.map(
+							(x) =>
+								`${x[0]}: ${x[1].conditions.map((x) => fancyDisplay(x)).join(', ')}${x[1].conditions.length ? ' =>' : ''} ${fancyDisplay(x[1].conclusion)}  [${x[1].from}]`,
+						)
+						.join('\n'),
+				);
+				continue;
+			}
+			if (command === 'list rules axiom') {
+				console.log(
+					formal.rulemanager.normalRules
+						.filter((x) => !x[1].steps || x[1].steps.length == 0)
+						.map(
+							(x) =>
+								`${x[0]}: ${x[1].conditions.map((x) => fancyDisplay(x)).join(', ')}${x[1].conditions.length ? ' =>' : ''} ${fancyDisplay(x[1].conclusion)}  [${x[1].from}]`,
+						)
+						.join('\n'),
+				);
+				continue;
+			}
+			if (command === 'list rules user') {
+				console.log(
+					formal.rulemanager.normalRules
+						.filter((x) => formal.rulemanager.macros.includes(x[0]))
 						.map(
 							(x) =>
 								`${x[0]}: ${x[1].conditions.map((x) => fancyDisplay(x)).join(', ')}${x[1].conditions.length ? ' =>' : ''} ${fancyDisplay(x[1].conclusion)}  [${x[1].from}]`,
