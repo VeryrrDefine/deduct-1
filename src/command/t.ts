@@ -1,4 +1,6 @@
+import { homedir } from 'node:os';
 import { cmdparser } from './commandparser.ts';
+import path from 'node:path';
 
 export function getInitialWorkspaceDir(ram = true) {
 	const ws = cmdparser.flags.get('workspace');
@@ -12,7 +14,7 @@ export function getInitialWorkspaceDir(ram = true) {
 		return ws;
 	}
 	if (p) {
-		return p;
+		return path.join(homedir(), '.deduct', 'projects', p);
 	}
 	if (!ram) throw new Error(`Path is not specified.`);
 	return '';
