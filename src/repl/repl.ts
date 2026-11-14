@@ -80,7 +80,7 @@ async function deduct(rulename: string, currentWorkspaceDir: string) {
 		matchmapSet[x] = propString.data.result;
 	}
 
-	const r = formal.deduct(rulename, conditionIdxs, new Map(Object.entries(matchmapSet)));
+	const r = await formal.deduct(rulename, conditionIdxs, new Map(Object.entries(matchmapSet)));
 	const result = r[1].value;
 	console.log(fancyDisplay(result));
 }
@@ -113,6 +113,10 @@ async function replQuestion() {
 				formal.workspace.propositions = JSON.parse(j).map((x: any) => ds.toProposition(x));
 				continue;
 			}
+			if (command === 'scrcl') {
+				console.clear();
+				continue;
+			}
 			if (command === 'clear') {
 				formal.workspace.propositions = [];
 				console.log(
@@ -129,6 +133,8 @@ async function replQuestion() {
 				console.log(`Action done.`);
 				continue;
 			}
+
+			if (command === 'distinct') continue;
 
 			if (command === 'parse') {
 				// 测试功能的指令
@@ -242,15 +248,21 @@ async function replQuestion() {
 				);
 				continue;
 			}
-			if (command === 'verify') {
-				console.log(`Verifing ${formal.rulemanager.macros.length} macro(s)...`);
+			if (command === 'verify' || command === 'verify all') {
+				const rulenames =
+					command === 'verify'
+						? formal.rulemanager.macros
+						: formal.rulemanager.normalRules.map((x) => x[0]);
+				console.log(
+					`Verifing ${rulenames.length} rule${rulenames.length >= 2 ? 's' : ''}...`,
+				);
 				const failedMacros: string[] = [];
 
 				const oldworkspace = formal.workspace;
 				const asserter = new ASTManager();
 				try {
-					for (const macro of formal.rulemanager.macros) {
-						const rule = formal.rulemanager.normalRules.find((x) => x[0] == macro);
+					for (const macro of rulenames) {
+						const rule = await formal.rulemanager.find(macro, formal);
 						if (!rule) {
 							throw new Error(`Macro ${macro} is lost.`);
 						}
@@ -306,7 +318,7 @@ async function replQuestion() {
 							if (deductstep.deductionIdx === 'hyp') {
 								continue;
 							}
-							formal.deduct(
+							await formal.deduct(
 								deductstep.deductionIdx,
 								deductstep.conditionIdxs,
 								new Map(Object.entries(deductstep.replaceValues)),

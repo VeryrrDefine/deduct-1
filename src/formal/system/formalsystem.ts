@@ -110,12 +110,18 @@ export class RuleManager {
 	}
 	async find(rulename: string, formal: FormalSystem) {
 		let firstfind = this.normalRules.find((x) => x[0] == rulename);
-		if (!firstfind && rulename.startsWith('<')) {
+		if (!firstfind) {
 			console.log(`Try generating ${rulename}`);
-			return [
-				rulename,
-				await new MetaruleGenerator().generateInvDeduct(rulename.slice(1), formal),
-			] as [string, Deduction];
+			if (rulename.startsWith('<'))
+				return [
+					rulename,
+					await new MetaruleGenerator().generateInvDeduct(rulename.slice(1), formal),
+				] as [string, Deduction];
+			if (rulename.startsWith('c'))
+				return [
+					rulename,
+					await new MetaruleGenerator().generateCondDeduct(rulename.slice(1), formal),
+				] as [string, Deduction];
 		}
 		return firstfind;
 	}
@@ -125,9 +131,9 @@ export class FormalSystem {
 	workspace: Workspace = new Workspace();
 	rulemanager: RuleManager = new RuleManager();
 	cacheList: string[] = [];
-	deduct(rulename: string, conditionIdxs: number[], playerMatchmap: Map<string, ASTNode>) {
+	async deduct(rulename: string, conditionIdxs: number[], playerMatchmap: Map<string, ASTNode>) {
 		const asserter = new ASTManager();
-		let rule = this.rulemanager.normalRules.find((x) => x[0] == rulename);
+		let rule = await this.rulemanager.find(rulename, this);
 		if (!rule) {
 			throw new Error(`Rule doesn't exists.`);
 		}

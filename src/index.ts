@@ -58,7 +58,7 @@ if (cmdparser.getBool('repl')) {
 			console.error(`Replvar ungiven: ${new Array(...rest)}`);
 			process.exit(2);
 		}
-		const a = formal.deduct(rulename, conditions, tabledata);
+		const a = await formal.deduct(rulename, conditions, tabledata);
 
 		await savePropositions(dir, formal, ds);
 		console.log(renderAST(a[1].value));

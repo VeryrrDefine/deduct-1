@@ -5,7 +5,7 @@
 import type { OK } from '../utils/ok';
 import { ASTNode } from './parser/compiler.ts';
 import { fancyDisplay } from './fancy.ts';
-import type { AssertionData, AssertionData2, MatchEntries } from './types/types.ts';
+import type { AssertionData, AssertionData2, Deduction, MatchEntries } from './types/types.ts';
 
 export class ASTManager {
 	isConstant(replvarName: string) {
@@ -184,6 +184,26 @@ export class ASTManager {
 			this.match(object.nodes[i], replvarMap, ast.nodes[i], errors);
 		}
 		return errors;
+	}
+	newReplvar(set: Set<string>): string {
+		let i = 0;
+		while (set.has(`$${i}`)) {
+			i++;
+		}
+
+		return `$${i}`;
+	}
+	allReplvars(obj: Deduction) {
+		const allData: AssertionData = {
+			variableNames: new Set(),
+			propositionNames: new Set(),
+		};
+		obj.conditions.forEach((x) =>
+			this.check(x, allData, { astExpectedType: 'proposition' }, []),
+		);
+		this.check(obj.conclusion, allData, { astExpectedType: 'proposition' }, []);
+
+		return new Set([...allData.propositionNames, ...allData.variableNames]);
 	}
 }
 
