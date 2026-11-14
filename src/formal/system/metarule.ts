@@ -4,9 +4,9 @@ import { ASTNode } from '../parser/compiler.ts';
 import { Workspace, type FormalSystem } from './formalsystem.ts';
 
 export class MetaruleGenerator {
-	generateInvDeduct(baserulename: string, formal: FormalSystem) {
+	async generateInvDeduct(baserulename: string, formal: FormalSystem) {
 		const asserter = new ASTManager();
-		const baseRule = formal.rulemanager.find(baserulename, formal);
+		const baseRule = await formal.rulemanager.find(baserulename, formal);
 		if (!baseRule) throw new Error(`Base rule doesn't exists.`);
 
 		// Only accepts (x0,x1,x2,...|-y0->y1)
@@ -53,5 +53,11 @@ export class MetaruleGenerator {
 		formal.workspace = a;
 
 		return res;
+	}
+	static serializeName(rulename: string) {
+		return encodeURIComponent(rulename).replaceAll('%', '#');
+	}
+	static deserializeName(rulename: string) {
+		return decodeURIComponent(rulename.replaceAll('#', '%'));
 	}
 }

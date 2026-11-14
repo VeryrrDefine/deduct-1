@@ -1,9 +1,10 @@
-import { mkdir, readFile } from 'fs/promises';
+import { mkdir, readdir, readFile, stat } from 'fs/promises';
 import { checkDirectory, saveFile } from './file.ts';
 import path from 'path';
 import type { FormalSystem } from '../formal/system/formalsystem';
 import type { Deserializer } from '../formal/exporter';
 import { existsSync } from 'fs';
+import { MetaruleGenerator } from '../formal/system/metarule.ts';
 
 export async function initWorkspace(dir: string) {
 	console.log(`Initializing workspace ${dir}...`);
@@ -34,6 +35,11 @@ export async function loadWorkspace(dir: string, formal: FormalSystem, ds: Deser
 	}
 	formal.rulemanager.macros = macros;
 
+	const cacheDir = path.join(dir, 'cache');
+	if (existsSync(cacheDir) && (await stat(cacheDir)).isDirectory()) {
+		const caches = (await readdir(cacheDir)).map((x) => MetaruleGenerator.deserializeName(x));
+		formal.cacheList.push(...caches);
+	}
 	// 3. 定理表：文件不存在 = 空
 	const propPath = path.join(dir, 'propositions.json');
 	if (existsSync(propPath)) {

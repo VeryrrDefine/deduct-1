@@ -9,6 +9,10 @@ import { Deserializer } from '../formal/exporter/index.ts';
 import { loadWorkspace, saveDeduction, savePropositions } from '../file/workspace.ts';
 import { cmdparser } from '../command/commandparser.ts';
 import { getInitialWorkspaceDir } from '../command/t.ts';
+import { MetaruleGenerator } from '../formal/system/metarule.ts';
+import path from 'node:path';
+import { checkDirectory, saveFile } from '../file/file.ts';
+import { readFile } from 'node:fs/promises';
 const rl = readline.createInterface({
 	input: process.stdin,
 	output: process.stdout,
@@ -16,8 +20,24 @@ const rl = readline.createInterface({
 const ds = new Deserializer();
 const formal = new FormalSystem();
 
-async function deduct(rulename: string) {
-	let rule = formal.rulemanager.find(rulename, formal);
+async function deduct(rulename: string, currentWorkspaceDir: string) {
+	if (
+		formal.cacheList.includes(`${rulename}.json`) &&
+		!formal.rulemanager.normalRules.find((x) => x[0] == rulename)
+	) {
+		const loads = (
+			await readFile(
+				path.join(
+					currentWorkspaceDir,
+					'cache',
+					`${MetaruleGenerator.serializeName(rulename)}.json`,
+				),
+			)
+		).toString('utf-8');
+		formal.rulemanager.normalRules.push([rulename, ds.toDeduction(JSON.parse(loads))]);
+	}
+
+	let rule = await formal.rulemanager.find(rulename, formal);
 	if (!rule) {
 		throw new Error(`Rule doesn't exists.`);
 	}
@@ -173,6 +193,30 @@ async function replQuestion() {
 				}
 				continue;
 			}
+			if (command === 'save metarule cache') {
+				if (!currentWorkspaceDir) {
+					console.log('Not available in memory-only mode.');
+					continue;
+				}
+				for (const s of formal.rulemanager.metaruleSet) {
+					const ded = await formal.rulemanager.find(s, formal);
+					if (!ded) continue;
+					const normalizedname = MetaruleGenerator.serializeName(ded[0]);
+
+					const data = ds.deserializeDeduction(ded[1]);
+
+					const finalPath = path.join(
+						currentWorkspaceDir,
+						'cache',
+						normalizedname + '.json',
+					);
+
+					await checkDirectory(path.join(currentWorkspaceDir, 'cache'));
+
+					await saveFile(JSON.stringify(data, null, 2), finalPath);
+				}
+				continue;
+			}
 
 			if (command === 'list rules nameonly') {
 				console.log('All rules:');
@@ -294,7 +338,7 @@ async function replQuestion() {
 			}
 			if (command === 'deduct') {
 				const rulename = await ask('For ');
-				await deduct(rulename);
+				await deduct(rulename, currentWorkspaceDir);
 				if (currentWorkspaceDir) {
 					await savePropositions(currentWorkspaceDir, formal, ds);
 				}
@@ -342,7 +386,8 @@ async function replQuestion() {
 				}
 				continue;
 			}
-			await deduct(command);
+
+			await deduct(command, currentWorkspaceDir);
 		} catch (e) {
 			console.error(e);
 		}

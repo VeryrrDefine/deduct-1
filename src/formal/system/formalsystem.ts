@@ -108,12 +108,13 @@ export class RuleManager {
 		);
 		return { termDifference, propDifference };
 	}
-	find(rulename: string, formal: FormalSystem) {
+	async find(rulename: string, formal: FormalSystem) {
 		let firstfind = this.normalRules.find((x) => x[0] == rulename);
 		if (!firstfind && rulename.startsWith('<')) {
+			console.log(`Try generating ${rulename}`);
 			return [
 				rulename,
-				new MetaruleGenerator().generateInvDeduct(rulename.slice(1), formal),
+				await new MetaruleGenerator().generateInvDeduct(rulename.slice(1), formal),
 			] as [string, Deduction];
 		}
 		return firstfind;
@@ -123,6 +124,7 @@ export class RuleManager {
 export class FormalSystem {
 	workspace: Workspace = new Workspace();
 	rulemanager: RuleManager = new RuleManager();
+	cacheList: string[] = [];
 	deduct(rulename: string, conditionIdxs: number[], playerMatchmap: Map<string, ASTNode>) {
 		const asserter = new ASTManager();
 		let rule = this.rulemanager.normalRules.find((x) => x[0] == rulename);
